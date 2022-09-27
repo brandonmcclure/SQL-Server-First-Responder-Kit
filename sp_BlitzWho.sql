@@ -435,7 +435,8 @@ IF @OutputDatabaseName IS NOT NULL AND @OutputSchemaName IS NOT NULL AND @Output
 				+ N'    [sql_handle], ' + @LineFeed 
 				+ N'    [plan_handle], ' + @LineFeed 
 				+ N'    [statement_start_offset], ' + @LineFeed 
-				+ N'    [statement_end_offset] ' + @LineFeed
+				+ N'    [statement_end_offset], ' + @LineFeed
+				+ N'    [JoinKey] ' + @LineFeed
 				+ N'    FROM ' + @LineFeed
 				+ N'        ( ' + @LineFeed
 				+ N'            SELECT ' + @LineFeed
@@ -537,7 +538,8 @@ IF @OutputDatabaseName IS NOT NULL AND @OutputSchemaName IS NOT NULL AND @Output
 				+ N'			       [sql_handle], ' + @LineFeed 
 				+ N'			       [plan_handle], ' + @LineFeed 
 				+ N'			       [statement_start_offset], ' + @LineFeed 
-				+ N'			       [statement_end_offset] ' + @LineFeed
+				+ N'			       [statement_end_offset], ' + @LineFeed
+				+ N'			       [JoinKey] ' + @LineFeed
 				+ N'            FROM ' + @OutputSchemaName + '.' + @OutputTableName + '' + @LineFeed 
 				+ N'        ) AS [BlitzWho] ' + @LineFeed
 				+ N'INNER JOIN [MaxQueryDuration] ON [BlitzWho].[ID] = [MaxQueryDuration].[MaxID]; ' + @LineFeed
