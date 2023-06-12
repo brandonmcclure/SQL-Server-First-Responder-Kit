@@ -31,6 +31,7 @@ ALTER PROCEDURE [dbo].[sp_DatabaseRestore]
 	@DatabaseOwner sysname = NULL,
 	@SetTrustworthyON BIT = 0,
     @Execute CHAR(1) = Y,
+	@FileExtensionDiff NVARCHAR(128) = NULL,
     @Debug INT = 0, 
     @Help BIT = 0,
     @Version     VARCHAR(30) = NULL OUTPUT,
@@ -42,7 +43,7 @@ SET STATISTICS XML OFF;
 
 /*Versioning details*/
 
-SELECT @Version = '8.11', @VersionDate = '20221013';
+SELECT @Version = '8.14', @VersionDate = '20230420';
 
 IF(@VersionCheckMode = 1)
 BEGIN
@@ -74,7 +75,7 @@ BEGIN
 		
 		MIT License
 			
-		Copyright (c) 2021 Brent Ozar Unlimited
+		Copyright (c) Brent Ozar Unlimited
 		
 		Permission is hereby granted, free of charge, to any person obtaining a copy
 		of this software and associated documentation files (the "Software"), to deal
@@ -157,6 +158,16 @@ BEGIN
 		@ContinueLogs = 1, 
 		@RunRecovery = 0,
 		@Debug = 0;
+
+	--Restore just through the latest DIFF, ignoring logs, and using a custom ".dif" file extension
+	EXEC dbo.sp_DatabaseRestore 
+		@Database = ''LogShipMe'', 
+		@BackupPathFull = ''D:\Backup\SQL2016PROD1A\LogShipMe\FULL\'', 
+		@BackupPathDiff = ''D:\Backup\SQL2016PROD1A\LogShipMe\DIFF\'',
+		@RestoreDiff = 1,
+		@FileExtensionDiff = ''dif'',
+		@ContinueLogs = 0, 
+		@RunRecovery = 1;
 
 	-- Restore from stripped backup set when multiple paths are used. This example will restore stripped full backup set along with stripped transactional logs set from multiple backup paths
 	EXEC dbo.sp_DatabaseRestore 
@@ -352,6 +363,9 @@ CREATE TABLE #Headers
     KeyAlgorithm NVARCHAR(32),
     EncryptorThumbprint VARBINARY(20),
     EncryptorType NVARCHAR(32),
+	LastValidRestoreTime DATETIME, 
+	TimeZone NVARCHAR(256), 
+	CompressionAlgorithm NVARCHAR(256),
     --
     -- Seq added to retain order by
     --
@@ -497,6 +511,13 @@ BEGIN
 	END
 END
 
+--File Extension cleanup
+IF @FileExtensionDiff LIKE '%.%'
+BEGIN
+	IF @Execute = 'Y' OR @Debug = 1 RAISERROR('Removing "." from @FileExtensionDiff', 0, 1) WITH NOWAIT;
+	SET @FileExtensionDiff = REPLACE(@FileExtensionDiff,'.','');
+END
+
 SET @RestoreDatabaseID = DB_ID(@RestoreDatabaseName);
 SET @RestoreDatabaseName = QUOTENAME(@RestoreDatabaseName);
 SET @UnquotedRestoreDatabaseName = PARSENAME(@RestoreDatabaseName,1);
@@ -520,6 +541,9 @@ IF @MajorVersion >= 11
 
 IF @MajorVersion >= 13 OR (@MajorVersion = 12 AND @BuildVersion >= 2342)
   SET @HeadersSQL += N', KeyAlgorithm, EncryptorThumbprint, EncryptorType';
+
+IF @MajorVersion >= 16
+  SET @HeadersSQL += N', LastValidRestoreTime, TimeZone, CompressionAlgorithm';
 
 SET @HeadersSQL += N')' + NCHAR(13) + NCHAR(10);
 SET @HeadersSQL += N'EXEC (''RESTORE HEADERONLY FROM DISK=''''{Path}'''''')';
@@ -636,15 +660,19 @@ BEGIN
 	/*End folder sanity check*/
 
 	IF @StopAt IS NOT NULL
-	BEGIN
-		DELETE
-		FROM @FileList
-		WHERE BackupFile LIKE N'%.bak'
-			AND
-			BackupFile LIKE N'%' + @Database + N'%'
-			AND
-			(REPLACE( RIGHT( REPLACE( BackupFile, RIGHT( BackupFile, PATINDEX( '%_[0-9][0-9]%', REVERSE( BackupFile ) ) ), '' ), 16 ), '_', '' ) > @StopAt);
-	END
+		BEGIN
+			DELETE
+			FROM @FileList
+			WHERE BackupFile LIKE N'%[_][0-9].bak'
+			AND	BackupFile LIKE N'%' + @Database + N'%'
+			AND	(REPLACE( RIGHT( REPLACE( BackupFile, RIGHT( BackupFile, PATINDEX( '%_[0-9][0-9]%', REVERSE( BackupFile ) ) ), '' ), 16 ), '_', '' ) > @StopAt);
+
+			DELETE
+			FROM @FileList
+			WHERE BackupFile LIKE N'%[_][0-9][0-9].bak'
+			AND	BackupFile LIKE N'%' + @Database + N'%'
+			AND	(REPLACE( RIGHT( REPLACE( BackupFile, RIGHT( BackupFile, PATINDEX( '%_[0-9][0-9]%', REVERSE( BackupFile ) ) ), '' ), 18 ), '_', '' ) > @StopAt);
+		END;
 	
     -- Find latest full backup 
     SELECT @LastFullBackup = MAX(BackupFile)
@@ -1034,9 +1062,15 @@ BEGIN
 	END
     /*End folder sanity check*/
     -- Find latest diff backup 
+	IF @FileExtensionDiff IS NULL
+	BEGIN
+		IF @Execute = 'Y' OR @Debug = 1 RAISERROR('No @FileExtensionDiff given, assuming "bak".', 0, 1) WITH NOWAIT;
+		SET @FileExtensionDiff = 'bak';
+	END
+
 	SELECT TOP 1 @LastDiffBackup = BackupFile, @CurrentBackupPathDiff = BackupPath
     FROM @FileList
-    WHERE BackupFile LIKE N'%.bak'
+    WHERE BackupFile LIKE N'%.' + @FileExtensionDiff
         AND
         BackupFile LIKE N'%' + @Database + '%'
 	    AND
