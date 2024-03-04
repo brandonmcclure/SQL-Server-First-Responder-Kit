@@ -57,7 +57,7 @@ SET NOCOUNT ON;
 SET STATISTICS XML OFF;
 SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
-SELECT @Version = '8.15', @VersionDate = '20230613';
+SELECT @Version = '8.19', @VersionDate = '20240222';
 IF(@VersionCheckMode = 1)
 BEGIN
 	RETURN;
@@ -118,8 +118,6 @@ IF (SELECT CONVERT(NVARCHAR(128), SERVERPROPERTY ('EDITION'))) <> 'SQL Azure'
 
 IF @Help = 1
 	BEGIN
-	
-	SELECT N'You have requested assistance. It will arrive as soon as humanly possible.' AS [Take four red capsules, help is on the way];
 
 	PRINT N'
 	sp_BlitzQueryStore from http://FirstResponderKit.org
@@ -163,6 +161,257 @@ IF @Help = 1
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 	SOFTWARE.
 	';
+		/*Parameter info*/
+	SELECT N'@Help' AS [Parameter Name] ,
+			N'BIT' AS [Data Type] ,
+			N'0' AS [Default Value],
+			N'Displays this help message.' AS [Parameter Description]
+	UNION ALL
+	SELECT N'@DatabaseName',
+			N'NVARCHAR(128)',
+			N'NULL',
+			N'The name of the database you want to check the query store for.'
+	UNION ALL
+	SELECT N'@Top',
+			N'INT',
+			N'3',
+			N'The number of records to retrieve and analyze from the query store. The following system views are used: query_store_query, query_context_settings, query_store_wait_stats, query_store_runtime_stats,query_store_plan.'
+	
+	UNION ALL
+	SELECT N'@StartDate',
+			N'DATETIME2(7)',
+			N'NULL',
+			N'Get query store info starting from this date. When not specified, sp_BlitzQueryStore gets info from the last 7 days'
+	UNION ALL
+	SELECT N'@EndDate',
+			N'DATETIME2(7)',
+			N'NULL',
+			N'Get query store info until this date. When not specified, sp_BlitzQueryStore gets info from the last 7 days'
+	UNION ALL
+	SELECT N'@MinimumExecutionCount',
+			N'INT',
+			N'NULL',
+			N'When a value is specified, sp_BlitzQueryStore gets info for queries where count_executions >= @MinimumExecutionCount'
+	UNION ALL
+	SELECT N'@DurationFilter',
+			N'DECIMAL(38,4)',
+			N'NULL',
+			N'Time unit - seconds. When a value is specified, sp_BlitzQueryStore gets info for queries where the average duration >= @DurationFilter'
+	UNION ALL
+	SELECT N'@StoredProcName',
+			N'NVARCHAR(128)',
+			N'NULL',
+			N'Get information for this specific stored procedure.'
+	UNION ALL
+	SELECT N'@Failed',
+			N'BIT',
+			N'0',
+			N'When set to 1, only information about failed queries is returned.'
+	UNION ALL
+	SELECT N'@PlanIdFilter',
+			N'INT',
+			N'NULL',
+			N'The ID of the plan you want to check for.'
+	UNION ALL
+	SELECT N'@QueryIdFilter',
+			N'INT',
+			N'NULL',
+			N'The ID of the query you want to check for.'
+	UNION ALL
+	SELECT N'@ExportToExcel',
+			N'BIT',
+			N'0',
+			N'When set to 1, prepares output for exporting to Excel. Newlines and additional whitespace are removed from query text and the execution plan is not displayed.'
+	UNION ALL
+	SELECT N'@HideSummary',
+			N'BIT',
+			N'0',
+			N'When set to 1, hides the findings summary result set.'
+	UNION ALL
+	SELECT N'@SkipXML',
+			N'BIT',
+			N'0',
+			N'When set to 1, missing_indexes, implicit_conversion_info, cached_execution_parameters, are not returned. Does not affect query_plan_xml'
+	UNION ALL
+	SELECT N'@Debug',
+			N'BIT',
+			N'0',
+			N'Setting this to 1 will print dynamic SQL and select data from all tables used.'
+	UNION ALL
+	SELECT N'@ExpertMode',
+			N'BIT',
+			N'0',
+			N'When set to 1, more checks are done. Examples: many to many merge joins, row goals, adaptive joins, stats info, bad scans and plan forcing, computed columns that reference scalar UDFs.'
+	UNION ALL
+	SELECT N'@VersionCheckMode',
+			N'BIT',
+			N'0',
+			N'Outputs the version number and date.'
+
+		/* Column definitions */
+	SELECT 'database_name'                                            AS [Column Name],
+	       'NVARCHAR(258)'                                            AS [Data Type],
+	       'The name of the database where the plan was encountered.' AS [Column Description]
+	UNION ALL
+	SELECT 'query_cost',
+	       'FLOAT',
+	       'The cost of the execution plan in query bucks.'
+	UNION ALL
+	SELECT 'plan_id',
+	       'BIGINT',
+	       'The ID of the plan from sys.query_store_plan.'
+	UNION ALL
+	SELECT 'query_id',
+	       'BIGINT',
+	       'The ID of the query from sys.query_store_query.'
+	UNION ALL
+	SELECT 'query_id_all_plan_ids',
+	       'VARCHAR(8000)',
+	       'Comma-separated list of all query plan IDs associated with this query.'
+	UNION ALL
+	SELECT 'query_sql_text',
+	       'NVARCHAR(MAX)',
+	       'The text of the query, as provided by the user/app. Includes whitespaces, hints and comments. Comments and spaces before and after the query text are ignored.'
+	UNION ALL
+	SELECT 'proc_or_function_name',
+	       'NVARCHAR(258)',
+	       'If the query is part of a function/stored procedure, you''ll see here the name of its parent object.'
+	UNION ALL
+	SELECT 'query_plan_xml',
+	       ' XML',
+	       'The query plan. Click to display a graphical plan.'
+	UNION ALL
+	SELECT 'warnings',
+	       'VARCHAR(MAX)',
+	       'A list of individual warnings generated by this query.'
+	UNION ALL
+	SELECT 'pattern',
+	       'NVARCHAR(512)',
+	       'A list of performance related patterns identified for this query.'
+	UNION ALL
+	SELECT 'parameter_sniffing_symptoms',
+	       'NVARCHAR(4000)',
+	       'A list of all the identified symptoms that are usually indicators of parameter sniffing.'
+	UNION ALL
+	SELECT 'last_force_failure_reason_desc',
+	       'NVARCHAR(258)',
+	       'Reason why plan forcing failed. NONE if plan isn''t forced.'
+	UNION ALL
+	SELECT 'top_three_waits',
+	       'NVARCHAR(MAX)',
+	       'The top 3 wait types, and their times in milliseconds, recorded for this query.'
+	UNION ALL
+	SELECT 'missing_indexes',
+	       'XML',
+	       'Missing index recommendations retrieved from the query plan.'
+	UNION ALL
+	SELECT 'implicit_conversion_info',
+	       'XML',
+	       'Information about the implicit conversion warnings,if any, retrieved from the query plan.'
+	UNION ALL
+	SELECT 'cached_execution_parameters',
+	       'XML',
+	       'Names, data types, and values for the parameters used when the query plan was compiled.'
+	UNION ALL
+	SELECT 'count_executions ',
+	       'BIGINT',
+	       'The number of executions of this particular query.'
+	UNION ALL
+	SELECT 'count_compiles',
+	       'BIGINT',
+	       'The number of plan compilations for this particular query.'
+	UNION ALL
+	SELECT 'total_cpu_time',
+	       'BIGINT',
+	       'Total CPU time, reported in milliseconds, that was consumed by all executions of this query.'
+	UNION ALL
+	SELECT 'avg_cpu_time ',
+	       'BIGINT',
+	       'Average CPU time, reported in milliseconds, consumed by each execution of this query.'
+	UNION ALL
+	SELECT 'total_duration',
+	       'BIGINT',
+	       'Total elapsed time, reported in milliseconds, consumed by all executions of this query.'
+	UNION ALL
+	SELECT 'avg_duration',
+	       'BIGINT',
+	       'Average elapsed time, reported in milliseconds, consumed by each execution of this query.'
+	UNION ALL
+	SELECT 'total_logical_io_reads',
+	       'BIGINT',
+	       'Total logical reads, reported in MB, performed by this query.'
+	UNION ALL
+	SELECT 'avg_logical_io_reads',
+	       'BIGINT',
+	       'Average logical reads, reported in MB, performed by each execution of this query.'
+	UNION ALL
+	SELECT 'total_physical_io_reads',
+	       'BIGINT',
+	       'Total physical reads, reported in MB, performed by this query.'
+	UNION ALL
+	SELECT 'avg_physical_io_reads',
+	       'BIGINT',
+	       'Average physical reads, reported in MB, performed by each execution of this query.'
+	UNION ALL
+	SELECT 'total_logical_io_writes',
+	       'BIGINT',
+	       'Total logical writes, reported in MB, performed by this query.'
+	UNION ALL
+	SELECT 'avg_logical_io_writes',
+	       'BIGINT',
+	       'Average logical writes, reported in MB, performed by each execution of this query.'
+	UNION ALL
+	SELECT 'total_rowcount',
+	       'BIGINT',
+	       'Total number of rows returned for all executions of this query.'
+	UNION ALL
+	SELECT 'avg_rowcount',
+	       'BIGINT',
+	       'Average number of rows returned by each execution of this query.'
+	UNION ALL
+	SELECT 'total_query_max_used_memory',
+	       'DECIMAL(38,2)',
+	       'Total max memory grant, reported in MB, used by this query.'
+	UNION ALL
+	SELECT 'avg_query_max_used_memory',
+	       'DECIMAL(38,2)',
+	       'Average max memory grant, reported in MB, used by each execution of this query.'
+	UNION ALL
+	SELECT 'total_tempdb_space_used',
+	       'DECIMAL(38,2)',
+	       'Total tempdb space, reported in MB, used by this query.'
+	UNION ALL
+	SELECT 'avg_tempdb_space_used',
+	       'DECIMAL(38,2)',
+	       'Average tempdb space, reported in MB, used by each execution of this query.'
+	UNION ALL
+	SELECT 'total_log_bytes_used',
+	       'DECIMAL(38,2)',
+	       'Total number of bytes in the database log used by this query.'
+	UNION ALL
+	SELECT 'avg_log_bytes_used',
+	       'DECIMAL(38,2)',
+	       'Average number of bytes in the database log used by each execution of this query.'
+	UNION ALL
+	SELECT 'total_num_physical_io_reads',
+	       'DECIMAL(38,2)',
+	       'Total number of physical I/O reads performed by this query (expressed as a number of read I/O operations).'
+	UNION ALL
+	SELECT 'avg_num_physical_io_reads',
+	       'DECIMAL(38,2)',
+	       'Average number of physical I/O reads performed by each execution of this query (expressed as a number of read I/O operations).'
+	UNION ALL
+	SELECT 'first_execution_time',
+	       'DATETIME2',
+	       'First execution time for this query within the aggregation interval. This is the end time of the query execution.'
+	UNION ALL
+	SELECT 'last_execution_time',
+	       'DATETIME2',
+	       'Last execution time for this query within the aggregation interval. This is the end time of the query execution.'
+	UNION ALL
+	SELECT 'context_settings',
+	       'NVARCHAR(512)',
+	       'Contains information about context settings associated with this query.';
 	RETURN;
 
 END;
@@ -330,6 +579,28 @@ SET @msg = N'New query_store_runtime_stats columns ' + CASE @new_columns
 							   END;
 RAISERROR(@msg, 0, 1) WITH NOWAIT;
 
+/*
+This section determines if Parameter Sensitive Plan Optimization is enabled on SQL Server 2022+.
+*/
+
+RAISERROR('Checking for Parameter Sensitive Plan Optimization ', 0, 1) WITH NOWAIT;
+
+DECLARE @pspo_out BIT,
+		@pspo_enabled BIT,
+		@pspo_sql NVARCHAR(MAX) = N'SELECT @i_out = CONVERT(bit,dsc.value)
+							      FROM ' + QUOTENAME(@DatabaseName) + N'.sys.database_scoped_configurations dsc
+								  WHERE dsc.name = ''PARAMETER_SENSITIVE_PLAN_OPTIMIZATION'';',
+		@pspo_params NVARCHAR(MAX) = N'@i_out INT OUTPUT';
+
+EXEC sys.sp_executesql @pspo_sql, @pspo_params, @i_out = @pspo_out OUTPUT;
+
+SET @pspo_enabled = CASE WHEN @pspo_out = 1 THEN 1 ELSE 0 END;
+
+SET @msg = N'Parameter Sensitive Plan Optimization ' + CASE @pspo_enabled 
+									WHEN 0 THEN N' not enabled, skipping.'
+									WHEN 1 THEN N' enabled, will analyze.'
+							   END;
+RAISERROR(@msg, 0, 1) WITH NOWAIT;
  
 /*
 These are the temp tables we use
@@ -1033,10 +1304,33 @@ IF @MinimumExecutionCount IS NOT NULL
 
 --You care about stored proc names
 IF @StoredProcName IS NOT NULL 
-	BEGIN 
-	RAISERROR(N'Setting stored proc filter', 0, 1) WITH NOWAIT;
-	SET @sql_where += N' AND object_name(qsq.object_id, DB_ID(' + QUOTENAME(@DatabaseName, '''') + N')) = @sp_StoredProcName 
-					   ';
+	BEGIN
+
+	IF (@pspo_enabled = 1)
+		BEGIN
+			RAISERROR(N'Setting stored proc filter, PSPO enabled', 0, 1) WITH NOWAIT;
+			/*	If PSPO is enabled, the object_id for a variant query would be 0. To include it, we check whether the object_id = 0 query
+				is a variant query, and whether it's parent query belongs to @sp_StoredProcName.											*/
+			SET @sql_where += N' AND (object_name(qsq.object_id, DB_ID(' + QUOTENAME(@DatabaseName, '''') + N')) = @sp_StoredProcName
+									OR (qsq.object_id = 0
+										AND EXISTS(
+											SELECT 1
+											FROM ' + QUOTENAME(@DatabaseName) + N'.sys.query_store_query_variant vr
+											JOIN ' + QUOTENAME(@DatabaseName) + N'.sys.query_store_query pqsq
+												ON pqsq.query_id = vr.parent_query_id
+											WHERE
+												vr.query_variant_query_id = qsq.query_id
+												AND object_name(pqsq.object_id, DB_ID(' + QUOTENAME(@DatabaseName, '''') + N')) = @sp_StoredProcName
+										)
+									))
+							   ';
+		END
+		ELSE
+		BEGIN
+			RAISERROR(N'Setting stored proc filter', 0, 1) WITH NOWAIT;
+			SET @sql_where += N' AND object_name(qsq.object_id, DB_ID(' + QUOTENAME(@DatabaseName, '''') + N')) = @sp_StoredProcName 
+							   ';
+		END
     END;
 
 --I will always love you, but hopefully this query will eventually end
@@ -2269,6 +2563,30 @@ EXEC sys.sp_executesql  @stmt = @sql_select,
 						@params = @sp_params,
 						@sp_Top = @Top, @sp_StartDate = @StartDate, @sp_EndDate = @EndDate, @sp_MinimumExecutionCount = @MinimumExecutionCount, @sp_MinDuration = @duration_filter_ms, @sp_StoredProcName = @StoredProcName, @sp_PlanIdFilter = @PlanIdFilter, @sp_QueryIdFilter = @QueryIdFilter;
 
+
+/*If PSPO is enabled, get procedure names for variant queries.*/
+IF (@pspo_enabled = 1)
+BEGIN
+	DECLARE
+		@pspo_names NVARCHAR(MAX) = '';
+
+	SET @pspo_names =
+	'UPDATE wm
+	SET 
+		wm.proc_or_function_name = 
+			QUOTENAME(object_schema_name(qsq.object_id, DB_ID(' + QUOTENAME(@DatabaseName, '''') + N'))) + ''.'' +
+			QUOTENAME(object_name(qsq.object_id, DB_ID(' + QUOTENAME(@DatabaseName, '''') + N'))) 
+	FROM #working_metrics wm
+	JOIN   ' + QUOTENAME(@DatabaseName) + N'.sys.query_store_query_variant AS vr
+		ON vr.query_variant_query_id = wm.query_id
+	JOIN   ' + QUOTENAME(@DatabaseName) + N'.sys.query_store_query AS qsq
+		ON qsq.query_id = vr.parent_query_id
+		AND qsq.object_id > 0
+	WHERE
+		wm.proc_or_function_name IS NULL;'
+		
+	EXEC sys.sp_executesql @pspo_names;
+END;
 
 
 /*This just helps us classify our queries*/

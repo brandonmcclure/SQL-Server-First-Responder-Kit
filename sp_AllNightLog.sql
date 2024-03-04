@@ -31,7 +31,7 @@ SET STATISTICS XML OFF;
 BEGIN;
 
 
-SELECT @Version = '8.15', @VersionDate = '20230613';
+SELECT @Version = '8.19', @VersionDate = '20240222';
 
 IF(@VersionCheckMode = 1)
 BEGIN
