@@ -13790,7 +13790,7 @@ SELECT [ServerName]
       ,[plan_handle]
       ,[statement_start_offset]
       ,[statement_end_offset]
-  FROM '+@FullOutputTableNameBlitzWho+N'
+	    FROM '+@FullOutputTableNameBlitzWho+N'
   WHERE [ServerName] = @Servername
   AND ([CheckDate] BETWEEN @StartDate AND @EndDate OR [start_time] BETWEEN CAST(@StartDate AS DATETIME) AND CAST(@EndDate AS DATETIME))
   '
@@ -39932,6 +39932,7 @@ IF @OutputDatabaseName IS NOT NULL AND @OutputSchemaName IS NOT NULL AND @Output
 				+ N'    [plan_handle], ' + @LineFeed 
 				+ N'    [statement_start_offset], ' + @LineFeed 
 				+ N'    [statement_end_offset] ' + @LineFeed
+				+ N'    [JoinKey] ' + @LineFeed
 				+ N'    FROM ' + @LineFeed
 				+ N'        ( ' + @LineFeed
 				+ N'            SELECT ' + @LineFeed
@@ -40034,6 +40035,7 @@ IF @OutputDatabaseName IS NOT NULL AND @OutputSchemaName IS NOT NULL AND @Output
 				+ N'			       [plan_handle], ' + @LineFeed 
 				+ N'			       [statement_start_offset], ' + @LineFeed 
 				+ N'			       [statement_end_offset] ' + @LineFeed
+				+ N'                   [JoinKey] ' + @LineFeed
 				+ N'            FROM ' + @OutputSchemaName + '.' + @OutputTableName + '' + @LineFeed 
 				+ N'        ) AS [BlitzWho] ' + @LineFeed
 				+ N'INNER JOIN [MaxQueryDuration] ON [BlitzWho].[ID] = [MaxQueryDuration].[MaxID]; ' + @LineFeed
